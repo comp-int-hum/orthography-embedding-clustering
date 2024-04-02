@@ -34,22 +34,15 @@ vars.AddVariables(
     ("GUT_DIR", "", ["../../../export/corpora/gutenberg/"]),
     ("SENT_DATASET_STEMS", "", ["../llm-direct-embeddings/work/GB_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz", "../llm-direct-embeddings/work/HT_Prose_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz"]),
     ("FOLDS", "", 1),
+    ("CLUSTER_ELEMENTS","",["Diffs","Embeds"]),
     ("USE_GRID","", False)
 )
 
-# Methods on the environment object are used all over the place, but it mostly serves to
-# manage the variables (see above) and builders (see below).
 env = Environment(
     variables=vars,
     ENV=os.environ,
     tools=[steamroller.generate],
-    
-    # Defining a bunch of builders (none of these do anything except "touch" their targets,
-    # as you can see in the dummy.py script).  Consider in particular the "TrainModel" builder,
-    # which interpolates two variables beyond the standard SOURCES/TARGETS: PARAMETER_VALUE
-    # and MODEL_TYPE.  When we invoke the TrainModel builder (see below), we'll need to pass
-    # in values for these (note that e.g. the existence of a MODEL_TYPES variable above doesn't
-    # automatically populate MODEL_TYPE, we'll do this with for-loops).
+
     BUILDERS={
         "CreateData" : Builder(
             action="python scripts/create_data.py ${METADATA} ${TARGETS[0]} ${DIR}"
@@ -70,7 +63,7 @@ env = Environment(
             action="python scripts/retrieve_bertlike.py --model ${MODEL_TYPE} --datasets ${SOURCE_DATASET} --outfile ${TARGETS[0]}"
         ),
         "GenerateK": Builder(
-            action="python scripts/generate_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --purity_out ${TARGETS[1]} --k ${K} --cluster_out ${CLUSTER_OUT}"
+            action="python scripts/generate_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --purity_out ${TARGETS[1]} --k ${K} --cluster_out ${CLUSTER_OUT} --distincts_out ${TARGETS[2]} --cluster_element ${CLUSTER_ELEMENT}"
         ),
         "GenerateReport" : Builder(
             action="python scripts/generate_report.py --experimental_results ${SOURCES} --outputs ${TARGETS[0]}"
@@ -143,13 +136,15 @@ for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], e
                         )
 
 for ename, embed in zip(embed_names, embeds):
-    results.append(
-        env.GenerateK(
-                ["work/results/${ENAME}/elbow.png", "work/results/${ENAME}/purity.png"],
+    for c_element in env["CLUSTER_ELEMENTS"]:
+        results.append(
+            env.GenerateK(
+                ["work/results/${ENAME}/${CLUSTER_ELEMENT}/elbow.png", "work/results/${ENAME}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${CLUSTER_ELEMENT}/distinct_stds.png"],
                 [embed],
                 ENAME = ename,
-                CLUSTER_OUT = "work/results/${ENAME}/"
-        )
+                CLUSTER_ELEMENT = c_element,
+                CLUSTER_OUT = "work/results/${ENAME}/${CLUSTER_ELEMENT}/"
+            )
 )
 	    
 """

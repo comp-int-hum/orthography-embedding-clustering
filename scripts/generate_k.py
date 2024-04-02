@@ -19,8 +19,10 @@ if __name__ == "__main__":
      parser.add_argument("--embeds", help="JSONgz embed")
      parser.add_argument("--outfile", help="Elbow png out")
      parser.add_argument("--purity_out", help="Purity chart out")
+     parser.add_argument("--distincts_out", help="Distinct stds in clusters out")
      parser.add_argument("--k", nargs=2, type=int, default=[1,150], help="K cluster range")
      parser.add_argument("--cluster_out", default="pngs/")
+     parser.add_argument("--cluster_element", choices=["Diffs","Embeds"], help="Element to cluster over")
 
      args, rest = parser.parse_known_args()
 
@@ -32,14 +34,19 @@ if __name__ == "__main__":
           standards = embeds["standards"]
           labels = embeds["labels"]
 
+          if args.cluster_element == "Diffs":
+               analyze = x_diffs
+          else:
+               analyze = x_embeds
+
      inertias = []
      ks = []
      avg_cps = []
-
+     avg_accs = []
      
      for k in range(args.k[0], args.k[1]):
           print("K: "+str(k))
-          kmeans = KMeans(n_clusters=k, random_state=0, n_init="auto").fit(np.array(x_diffs))
+          kmeans = KMeans(n_clusters=k, random_state=0, n_init="auto").fit(np.array(analyze))
           inertias.append(kmeans.inertia_)
           print("Inertia: "+str(inertias[-1]))
           ks.append(k)
@@ -49,16 +56,18 @@ if __name__ == "__main__":
           k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label"])
 
           full_PCA = PCA(n_components=2)
-          fit = full_PCA.fit_transform(k_df["Diffs"].tolist())
+          fit = full_PCA.fit_transform(k_df[args.cluster_element].tolist())
           k_df["x"] = [f[0] for f in fit]
           k_df["y"] = [f[1] for f in fit]
 
-          #cluster purity method: how well does each K gather known nontargets (std, rev, ocr labels) into single clusters
-          #avg. purity: less mixed clusters are on avg. the better
           legend_labels = []
           cluster_pures = []
+          cluster_accs = []
+
           for c_name, c_group in k_df.groupby("Cluster"):
                c_group = c_group.reset_index(drop=True)
+               #cluster purity method: how well does each K gather known nontargets (std, rev, ocr labels) into single clusters
+               #avg. purity: less mixed clusters are on avg. the better
                cluster_counts = sorted([
                     c_group["Label"].str.count("std").sum(),
                     c_group["Label"].str.count("ocr").sum(),
@@ -67,15 +76,21 @@ if __name__ == "__main__":
                ], reverse=True)
                cluster_pures.append( cluster_counts[0]/sum(cluster_counts))
                legend_labels.append(str(len(c_group)) + ": "+ " ".join(c_group["Token"][0:3]))
+
+               #cluster accuracy: how "correct" are the clusters (same standard)
+               #currently nunique for avg
+               cluster_accs.append(c_group["Standard"].nunique())
+
           #print(k_df.assign(Cluster=k_df["Cluster"].map(lambda x: legend_labels[x])))
           ax = sns.scatterplot(x="x", y="y", hue="Cluster", data=k_df.assign(Cluster=k_df["Cluster"].map(lambda x: legend_labels[x])), legend="full")
           #sns.move_legend(ax, "upper center", bbox_to_anchor=(0.5, 1.35), ncol=3, title=None, frameon=False)
           #pos = ax.get_position()
           #ax.set_position([pos.x0, pos.y0, pos.width, pos.height * 0.75])
           #plt.legend(title="Clusters", loc="upper center", labels=legend_labels, bbox_to_anchor=(0.5, 1.35), ncol=3)
+          avg_accs.append(sum(cluster_accs)/len(cluster_accs))
           avg_cps.append(sum(cluster_pures)/len(cluster_pures))
-          plt.savefig(args.cluster_out+"kpca"+str(k)+".png", format="png")
-          k_df.to_csv(args.cluster_out+"kpca"+str(k)+".csv", columns=["Token","Cluster","Label"], index=False)
+          plt.savefig(args.cluster_out+"kpca"+str(k)+args.cluster_element+".png", format="png")
+          k_df.to_csv(args.cluster_out+"kpca"+str(k)+args.cluster_element+".csv", columns=["Token","Cluster","Label"], index=False)
           plt.clf()
      
      plt.plot(ks, inertias, "bx-")
@@ -93,6 +108,13 @@ if __name__ == "__main__":
      plt.xlabel("K")
      plt.ylabel("Avg. Purity")
      plt.savefig(args.purity_out, format="png")
+
+     plt.clf()
+     plt.plot(ks, avg_accs, "bx-")
+     plt.xticks(np.arange(min(ks), max(ks)+1, 1))
+     plt.xlabel("K")
+     plt.ylabel("Avg. Distinct Standards")
+     plt.savefig(args.distincts_out, format="png")
 
      #for ob_name, ob_group in k_df.groupby("Standard"):
      #     ob_group = ob_group.reset_index(drop=True)

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 import torch
 from collections import defaultdict
-
+import nlpaug.augmenter.char as nac
 
 def genOCRError(orig):
      if "s" in orig:
@@ -42,7 +42,8 @@ if __name__ == "__main__":
      else:
           layers="last_four"
           
-          
+
+     aug = nac.OcrAug()
      y = []
      standards = []
      x_diffs = []
@@ -58,7 +59,7 @@ if __name__ == "__main__":
                              ann["observed"] = ann["observed"].replace("’", "'").replace("‘","'")
                              if ann["observed"]:
 
-                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], genOCRError(ann["standard"])]
+                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], aug.augment(ann["standard"])[0]]
                                   labels += ["std","obv","rev","ocr"]
                                   standards += [ann["standard"]]*4
 
