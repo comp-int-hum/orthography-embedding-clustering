@@ -12,6 +12,7 @@ import imp
 import sys
 import json
 import steamroller
+import glob
 
 # workaround needed to fix bug with SCons and the pickle module
 del sys.modules['pickle']
@@ -35,6 +36,8 @@ vars.AddVariables(
     ("SENT_DATASET_STEMS", "", ["../llm-direct-embeddings/work/GB_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz", "../llm-direct-embeddings/work/HT_Prose_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz"]),
     ("FOLDS", "", 1),
     ("CLUSTER_ELEMENTS","",["Diffs","Embeds"]),
+    ("N_TRANSFORMS","",3),
+    ("LABEL_SETS", "", [["std","rev","ocr","obv"], ["rev","ocr","obv"], ["ocr","obv"], ["std","ocr","obv"]]),
     ("USE_GRID","", False)
 )
 
@@ -63,10 +66,12 @@ env = Environment(
             action="python scripts/retrieve_bertlike.py --model ${MODEL_TYPE} --datasets ${SOURCE_DATASET} --outfile ${TARGETS[0]}"
         ),
         "GenerateK": Builder(
-            action="python scripts/generate_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --purity_out ${TARGETS[1]} --k ${K} --cluster_out ${CLUSTER_OUT} --distincts_out ${TARGETS[2]} --cluster_element ${CLUSTER_ELEMENT}"
+            action="python scripts/generate_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --purity ${TARGETS[1]} --distincts_out ${TARGETS[2]} --so_acc ${TARGETS[3]} --k ${K} --cluster_element ${CLUSTER_ELEMENT} --label_set ${LS} --cluster_out ${CLUSTER_OUT}"
         ),
-        "GenerateReport" : Builder(
-            action="python scripts/generate_report.py --experimental_results ${SOURCES} --outputs ${TARGETS[0]}"
+        "AnalyzeDetails": Builder(
+            action="python scripts/analyze_detail.py --dummy_infile ${SOURCES[0]} --purity ${TARGETS[0]} --acc ${TARGETS[1]} --std_obs ${TARGETS[2]} --infile ${JSONL_LOC}"),
+        "LDTransforms" : Builder(
+            action="python scripts/ld_transforms.py --dummy_infile ${SOURCES[0]} --edits_out ${TARGETS[1]} --lds_out ${TARGETS[2]} --infile ${JSONL_LOC} --n_edits ${N_TRANSFORMS} --outfile ${TARGETS[0]}"
         )
    }
 
@@ -74,7 +79,7 @@ env = Environment(
 
 embeds = []
 embed_names = []
-results = []
+results = {}
 #for dataset_name in env["SENT_DATASET_STEMS"]:
 for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], env["DATASET_NAMES"]):
     data = env.CreateData("work/${DATASET_NAME}/data.txt.gz", [], METADATA=metadata, DIR=corpus_dir, DATASET_NAME=dataset_name)
@@ -136,16 +141,36 @@ for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], e
                         )
 
 for ename, embed in zip(embed_names, embeds):
-    for c_element in env["CLUSTER_ELEMENTS"]:
-        results.append(
-            env.GenerateK(
-                ["work/results/${ENAME}/${CLUSTER_ELEMENT}/elbow.png", "work/results/${ENAME}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${CLUSTER_ELEMENT}/distinct_stds.png"],
+    for ls in env["LABEL_SETS"]:
+        for c_element in env["CLUSTER_ELEMENTS"]:
+
+            result = env.GenerateK(
+                ["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/elbow.png","work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/accs.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/so_accs.png"],
                 [embed],
                 ENAME = ename,
                 CLUSTER_ELEMENT = c_element,
-                CLUSTER_OUT = "work/results/${ENAME}/${CLUSTER_ELEMENT}/"
+		LS = ls,
+		LSN = "".join(ls),
+                CLUSTER_OUT = "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/"
             )
-)
+            indiv = []
+            for k in range(int(env["K"][0]), int(env["K"][1])):
+                indiv.append(env.AnalyzeDetails(
+                    ["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/detail_charts/purity${K}.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/detail_charts/acc${K}.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/detail_charts/std_obs${K}.png"],
+                    [result[0]],
+                    ENAME = ename,
+                    CLUSTER_ELEMENT = c_element,
+                    LSN = "".join(ls),
+                    K = k,
+                    JSONL_LOC = "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/details${K}.jsonl"
+           ))
+                t = env.LDTransforms(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/diffs/diffs${K}.jsonl", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/diffs/edits${K}.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/diffs/lds${K}.png"],
+                    [result[0]],
+                    ENAME = ename,
+                    CLUSTER_ELEMENT = c_element,
+                    LSN = "".join(ls),
+                    K = k,
+                    JSONL_LOC = "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/details${K}.jsonl")
 	    
 """
             for parameter_value in env["PARAMETER_VALUES"]:
@@ -168,11 +193,5 @@ for ename, embed in zip(embed_names, embeds):
                             PARAMETER_VALUE=parameter_value,              
                         )
                     )
-
-# Use the list of applied model outputs to generate an evaluation report (table, plot,
-# f-score, confusion matrix, whatever makes sense).
-report = env.GenerateReport(
-    "work/report.txt",
-    results
 )
 """
