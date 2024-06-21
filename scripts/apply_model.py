@@ -68,9 +68,7 @@ if __name__ == "__main__":
                    for line in d_in:
                         js_line = json.loads(line)
                         for ann in js_line["annotations"]:
-                             ann["observed"] = ann["observed"].replace("’", "'").replace("‘","'")
                              if ann["observed"]:
-
                                   y += [ann["standard"], ann["observed"], ann["standard"][::-1], genOCRError(ann["standard"])]
                                   labels += ["std","obv","rev","ocr"]
                                   standards += [ann["standard"]]*4

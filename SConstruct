@@ -13,6 +13,7 @@ import sys
 import json
 import steamroller
 import glob
+from collections import defaultdict
 
 # workaround needed to fix bug with SCons and the pickle module
 del sys.modules['pickle']
@@ -33,11 +34,12 @@ vars.AddVariables(
     ("DATASET_NAMES", "", ["GB19"]),
     ("METADATA","", ["../gutenberg-ns-extractor/pg_19cam.csv"]),
     ("GUT_DIR", "", ["../../../export/corpora/gutenberg/"]),
-    ("SENT_DATASET_STEMS", "", ["../llm-direct-embeddings/work/GB_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz", "../llm-direct-embeddings/work/HT_Prose_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz"]),
+    ("SENT_DATASET_STEMS", "", ["../llm-direct-embeddings/work/GB_0_2/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz"]),
     ("FOLDS", "", 1),
     ("CLUSTER_ELEMENTS","",["Diffs","Embeds"]),
     ("N_TRANSFORMS","",3),
-    ("LABEL_SETS", "", [["std","rev","ocr","obv"], ["rev","ocr","obv"], ["ocr","obv"], ["std","ocr","obv"]]),
+    ("LABEL_SETS", "", [["std","rev","ocr","obv"], ["rev","ocr","obv"], ["ocr","obv"], ["std","ocr","obv"], ["obv"]]),
+    ("ANALYZE_MODELS", "", ["bert-large-uncased_1", "fasttext_pretrained_1", "fasttexttrained_300_1", "google/canine-c_1"]),
     ("USE_GRID","", False)
 )
 
@@ -68,11 +70,17 @@ env = Environment(
         "GenerateK": Builder(
             action="python scripts/generate_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --purity ${TARGETS[1]} --distincts_out ${TARGETS[2]} --so_acc ${TARGETS[3]} --k ${K} --cluster_element ${CLUSTER_ELEMENT} --label_set ${LS} --cluster_out ${CLUSTER_OUT}"
         ),
+	"Cluster": Builder(action="python scripts/cluster_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --k ${K} --cluster_element ${CLUSTER_ELEMENT} --label_set ${LS}"),
+        "SummaryCharts": Builder(action="python scripts/summary_charts.py --cluster_csvs ${SOURCES} --purity ${TARGETS[0]} --accs_out ${TARGETS[1]} --so_acc ${TARGETS[2]} --summary_out ${TARGETS[3]} --label_set ${LS}"),
+        "Transforms": Builder(action="python scripts/transforms.py --k_csv ${SOURCES[0]} --edits_out ${TARGETS[0]} --tokens_out ${T_O}"),
+        "TransformChart": Builder(action="python scripts/transform_chart.py --edits_in ${SOURCES[0]} --n_edits ${N_TRANSFORMS} --outfile ${TARGETS[0]}"),
+        "DirChart": Builder(action="python scripts/combined_reduce_diffs.py --pca_csv ${SOURCES[0]} --transforms ${SOURCES[1]} --outfile ${TARGETS[0]} --k ${K}"),
         "AnalyzeDetails": Builder(
             action="python scripts/analyze_detail.py --dummy_infile ${SOURCES[0]} --purity ${TARGETS[0]} --acc ${TARGETS[1]} --std_obs ${TARGETS[2]} --infile ${JSONL_LOC}"),
         "LDTransforms" : Builder(
-            action="python scripts/ld_transforms.py --dummy_infile ${SOURCES[0]} --edits_out ${TARGETS[1]} --lds_out ${TARGETS[2]} --infile ${JSONL_LOC} --n_edits ${N_TRANSFORMS} --outfile ${TARGETS[0]}"
-        )
+            action="python scripts/ld_transforms.py --dummy_infile ${SOURCES[0]} --edits_out ${TARGETS[1]} --lds_out ${TARGETS[2]} --infile ${JSONL_LOC} --n_edits ${N_TRANSFORMS} --outfile ${TARGETS[0]}"),
+        "AggCharts" : Builder(
+            action="python scripts/agg_charts.py --outfile ${TARGETS[0]} --to_analyze ${SOURCES} --element ${ELEMENT} --model_names ${ANALYZE_MODELS}")
    }
 
 )
@@ -84,16 +92,6 @@ results = {}
 for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], env["DATASET_NAMES"]):
     data = env.CreateData("work/${DATASET_NAME}/data.txt.gz", [], METADATA=metadata, DIR=corpus_dir, DATASET_NAME=dataset_name)
     for fold in range(1, env["FOLDS"] + 1):
-        #train, dev, test = env.ShuffleData(
-           # [
-               # "work/${DATASET_NAME}/${FOLD}/train.txt",
-               # "work/${DATASET_NAME}/${FOLD}/dev.txt",
-               # "work/${DATASET_NAME}/${FOLD}/test.txt",
-           # ],
-           # data,
-           # FOLD=fold,
-           # DATASET_NAME=dataset_name,
-       # )
         for model_type in env["MODEL_TYPES"]:
             if model_type == "fasttext_pretrained":
                 embed_names.append(model_type + "_"+ str(fold))
@@ -140,10 +138,63 @@ for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], e
                             MODEL_TYPE=model_type)
                         )
 
+res = defaultdict(dict)
+
 for ename, embed in zip(embed_names, embeds):
     for ls in env["LABEL_SETS"]:
         for c_element in env["CLUSTER_ELEMENTS"]:
+            cluster_csvs = []
+            ld_transforms = []
+            for k in range(env["K"][0], env["K"][1]+1):
+                cluster_csvs.append(env.Cluster(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/${K}.csv"], [embed],
+                    ENAME = ename,
+                    CLUSTER_ELEMENT = c_element,
+                    LS = ls,
+                    LSN = "".join(ls),
+                    K = k
+                ))
 
+                ld_transforms.append(env.Transforms(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/edits/${K}.jsonl"], [cluster_csvs[-1]],
+                    ENAME = ename,
+                    CLUSTER_ELEMENT = c_element,
+                    LSN = "".join(ls),
+                    K = k,
+                    T_O = "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/edits/${K}_tokens.txt"
+                ))
+
+                tc = env.TransformChart(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/edits/${K}.png"], [ld_transforms[-1]],
+                    ENAME = ename,
+                    CLUSTER_ELEMENT = c_element,
+                    LSN = "".join(ls),
+                    K = k
+                )
+
+                dc = env.DirChart(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/dir_chart/${K}.png"], [cluster_csvs[-1], ld_transforms[-1]],
+                    ENAME = ename,
+                    CLUSTER_ELEMENT = c_element,
+                    LSN = "".join(ls),
+                    K = k
+                )
+
+                
+            purity, acc, std_ob_acc, summ = env.SummaryCharts(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/acc.png",
+                "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/std_obs.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/summary.csv"],
+                [cluster_csvs],
+                ENAME = ename,
+                CLUSTER_ELEMENT = c_element,
+                LS = ls,
+                LSN = "".join(ls))
+            res["".join(ls)+"_"+c_element][ename] = summ
+
+for sum_name, summs in res.items():
+    for element in ["Purity", "Avg_Acc", "Avg_SO_Acc"]:
+        chart = env.AggCharts(["work/results/summaries/${SUM_NAME}/${ELEMENT}.png"], [summs[m] for m in env["ANALYZE_MODELS"]],
+              SUM_NAME = sum_name,
+              ELEMENT = element
+)
+        
+
+"""
             result = env.GenerateK(
                 ["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/elbow.png","work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/accs.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/so_accs.png"],
                 [embed],
@@ -154,7 +205,7 @@ for ename, embed in zip(embed_names, embeds):
                 CLUSTER_OUT = "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/"
             )
             indiv = []
-            for k in range(int(env["K"][0]), int(env["K"][1])):
+            for k in range(int(env["K"][0]), int(env["K"][1])+1):
                 indiv.append(env.AnalyzeDetails(
                     ["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/detail_charts/purity${K}.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/detail_charts/acc${K}.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/detail_charts/std_obs${K}.png"],
                     [result[0]],
@@ -171,27 +222,17 @@ for ename, embed in zip(embed_names, embeds):
                     LSN = "".join(ls),
                     K = k,
                     JSONL_LOC = "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/details${K}.jsonl")
-	    
-"""
-            for parameter_value in env["PARAMETER_VALUES"]:
-                model = env.TrainModel(
-                    "work/${DATASET_NAME}/${FOLD}/${MODEL_TYPE}/${PARAMETER_VALUE}/model.bin",
-                    [train, dev],
-                    FOLD=fold,
-                    DATASET_NAME=dataset_name,
-                    MODEL_TYPE=model_type,
-                    PARAMETER_VALUE=parameter_value,
-                )
-		for k in env["K"]:
-                    results.append(
-                         env.ApplyModel(
-                            "work/${DATASET_NAME}/${FOLD}/${MODEL_TYPE}/${PARAMETER_VALUE}/applied.txt",
-                            [model, test],
-                            FOLD=fold,
-                            DATASET_NAME=dataset_name,
-                            MODEL_TYPE=model_type,
-                            PARAMETER_VALUE=parameter_value,              
-                        )
-                    )
-)
+                res.append(t[0])
+charts = []        
+for label_set in env["LABEL_SETS"]:
+    for mode in env["CLUSTER_ELEMENTS"]:
+        for element in ["Purity", "Avg. Acc", "Avg. SO Acc"]:
+           charts.append(env.SummaryCharts(["work/results/summary/${SET}/${MODE}/${ELEMENT}.png"], [res[0]],
+                        SET = "".join(label_set),
+                        MODE = mode,
+                        ELEMENT = element))
+	
+#print(embed_names)
+#print(env["LABEL_SETS"])
+#print(env["CLUSTER_ELEMENTS"])
 """

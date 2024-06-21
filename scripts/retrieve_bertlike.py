@@ -13,16 +13,6 @@ import torch
 from collections import defaultdict
 import nlpaug.augmenter.char as nac
 
-def genOCRError(orig):
-     if "s" in orig:
-          return orig.replace("s", "5", 1)
-     if "o" in orig:
-          return orig.replace("o","0",1)
-     if "n" in orig:
-          return orig.replace("n","h",1)
-     orig = "l"+orig[1:]
-     return orig
-
 def dist(a, b):
      return a-b
 
@@ -34,6 +24,7 @@ if __name__ == "__main__":
 
      args, rest = parser.parse_known_args()
 
+     aug = nac.OcrAug()
      layers = ""
      print(args.model)
      if args.model == "google/canine-c":
@@ -43,7 +34,8 @@ if __name__ == "__main__":
           layers="last_four"
           
 
-     aug = nac.OcrAug()
+     n_anns = 0
+     obv = 0
      y = []
      standards = []
      x_diffs = []
@@ -56,9 +48,10 @@ if __name__ == "__main__":
                    for line in d_in:
                         js_line = json.loads(line)
                         for ann in js_line["annotations"]:
-                             ann["observed"] = ann["observed"].replace("’", "'").replace("‘","'")
+                             n_anns += 1
                              if ann["observed"]:
-
+                                  
+                                  obv+=1
                                   y += [ann["standard"], ann["observed"], ann["standard"][::-1], aug.augment(ann["standard"])[0]]
                                   labels += ["std","obv","rev","ocr"]
                                   standards += [ann["standard"]]*4
@@ -75,3 +68,7 @@ if __name__ == "__main__":
 
      with open(args.outfile, "wb") as of:
           pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels":labels}, of)
+     print(n_anns)
+     print(obv)
+     
+          
