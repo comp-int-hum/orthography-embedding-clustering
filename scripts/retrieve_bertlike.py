@@ -30,6 +30,12 @@ if __name__ == "__main__":
      if args.model == "google/canine-c":
           layers="last"
           args.datasets = ["../llm-direct-embeddings/work/GB_0_2/google/canine-c/embeds/chunk_embed_custom_0_*.json.gz"]
+     elif args.model == "google/canine-s":
+          layers="last"
+          args.datasets = ["../llm-direct-embeddings/work/GB_0_2/google/canine-s/embeds/chunk_embed_custom_0_*.json.gz"]
+     elif args.model == "bert-base-uncased":
+          layers="last_four"
+          args.datasets = ["../llm-direct-embeddings/work/GB_0_2/bert-base-uncased/embeds/chunk_embed_custom_0_*.json.gz"]
      else:
           layers="last_four"
           
@@ -52,17 +58,18 @@ if __name__ == "__main__":
                              if ann["observed"]:
                                   
                                   obv+=1
-                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], aug.augment(ann["standard"])[0]]
-                                  labels += ["std","obv","rev","ocr"]
-                                  standards += [ann["standard"]]*4
+                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], aug.augment(ann["standard"])[0], ann["standard"][:2][::-1]+ann["standard"][2:]]
+                                  labels += ["std","obv","rev","ocr","swp"]
+                                  standards += [ann["standard"]]*5
 
                                   x_embeds += [np.mean(np.array(ann["standard_embeddings"][layers]), axis=0),
                                                np.mean(np.array(ann["observed_embeddings"][layers]), axis=0),
                                                np.mean(np.array(ann["reverse_embeddings"][layers]), axis=0),
-                                               np.mean(np.array(ann["error_embeddings"][layers]), axis=0)
+                                               np.mean(np.array(ann["error_embeddings"][layers]), axis=0),
+                                               np.mean(np.array(ann["swap_embeddings"][layers]), axis=0)
                                                ]
 
-                                  x_diffs += [dist(x_embeds[-4],x_embeds[-4]),dist(x_embeds[-4],x_embeds[-3]),dist(x_embeds[-4], x_embeds[-2]),dist(x_embeds[-4],x_embeds[-1])]
+                                  x_diffs += [dist(x_embeds[-5],x_embeds[-5]),dist(x_embeds[-5],x_embeds[-4]),dist(x_embeds[-5], x_embeds[-3]),dist(x_embeds[-5],x_embeds[-2]), dist(x_embeds[-5],x_embeds[-1])]
                                        
                                  
 

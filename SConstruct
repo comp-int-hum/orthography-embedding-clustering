@@ -27,7 +27,7 @@ import pickle
 vars = Variables("custom.py")
 vars.AddVariables(
     ("OUTPUT_WIDTH", "", 5000),
-    ("MODEL_TYPES", "", ["fasttext", "fasttext_pretrained", "google/canine-c", "bert-large-uncased"]),
+    ("MODEL_TYPES", "", ["fasttext", "fasttext_pretrained", "google/canine-c", "bert-large-uncased", "bert-base-uncased", "google/canine-s"]),
     ("PRETRAINED_LOC","","cc.en.300.bin"),
     ("PARAMETER_VALUES", "", {"trained_300": [300], "trained_128": [128]}),
     ("K","",[1,20]),
@@ -38,8 +38,8 @@ vars.AddVariables(
     ("FOLDS", "", 1),
     ("CLUSTER_ELEMENTS","",["Diffs","Embeds"]),
     ("N_TRANSFORMS","",3),
-    ("LABEL_SETS", "", [["std","rev","ocr","obv"], ["rev","ocr","obv"], ["ocr","obv"], ["std","ocr","obv"], ["obv"]]),
-    ("ANALYZE_MODELS", "", ["bert-large-uncased_1", "fasttext_pretrained_1", "fasttexttrained_300_1", "google/canine-c_1"]),
+    ("LABEL_SETS", "", [["std","rev","ocr","obv","swp"],["std","rev","ocr","obv"], ["rev","ocr","obv"], ["rev","ocr","obv","swp"], ["ocr","obv"], ["std","ocr","obv"], ["obv"]]),
+    ("ANALYZE_MODELS", "", ["bert-large-uncased_1", "fasttext_pretrained_1", "fasttexttrained_300_1", "google/canine-c_1", "bert-base-uncased_1", "google/canine-s_1"]),
     ("USE_GRID","", False)
 )
 
@@ -104,7 +104,7 @@ for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], e
                         PRETRAINED=1,
                         MODEL_TYPE=model_type)
                     )
-            elif model_type in ["google/canine-c","bert-large-uncased"]:
+            elif model_type in ["google/canine-c","bert-large-uncased", "google/canine-s", "bert-base-uncased"]:
                 embed_names.append(model_type + "_"+ str(fold))
                 embeds.append(
                     env.RetrieveBertlike(

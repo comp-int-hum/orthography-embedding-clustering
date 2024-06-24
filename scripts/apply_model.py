@@ -11,27 +11,9 @@ import pickle
 
 from gensim.models import FastText
 
-import seaborn as sns
-import matplotlib.pyplot as plt
-from torch.nn.functional import cosine_similarity
 import torch
 from collections import defaultdict
-
-def genOCRError(orig):
-     if "s" in orig:                                                                                                                                                                                         
-          return orig.replace("s", "5", 1)
-     if "o" in orig:
-          return orig.replace("o","0",1)
-     if "n" in orig:
-          return orig.replace("n","h",1)
-     orig = "l"+orig[1:]
-     return orig
-
-#def dist(a,b):
-#     try:
-#          return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-#     except:
-#          return 0
+import nlpaug.augmenter.char as nac
 
 def dist(a,b):
      return a - b
@@ -46,6 +28,7 @@ if __name__ == "__main__":
 
      args, rest = parser.parse_known_args()
 
+     aug = nac.OcrAug()
      print(args.ft_pt)
      if args.ft_pt == True:
           import fasttext.util
@@ -69,28 +52,33 @@ if __name__ == "__main__":
                         js_line = json.loads(line)
                         for ann in js_line["annotations"]:
                              if ann["observed"]:
-                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], genOCRError(ann["standard"])]
-                                  labels += ["std","obv","rev","ocr"]
-                                  standards += [ann["standard"]]*4
+                                  ocr_tok = aug.augment(ann["standard"])[0]
+                                  swap_tok = ann["standard"][:2][::-1]+ann["standard"][2:]
+                                  
+                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], ocr_tok, swap_tok]
+                                  labels += ["std","obv","rev","ocr","swp"]
+                                  standards += [ann["standard"]]*5
 
                                   if args.ft_pt == False:
                                        x_embeds += [model.wv[ann["standard"]],
                                                model.wv[ann["observed"]],
                                                model.wv[ann["standard"][::-1]],
-                                               model.wv[genOCRError(ann["standard"])]]
+                                               model.wv[ocr_tok],
+                                               model.wv[swap_tok]]
 
                                        x_diffs += [dist(x_embeds[0],x_embeds[0]), dist(model.wv[ann["standard"]], model.wv[ann["observed"]]),
                                               dist(model.wv[ann["standard"]], model.wv[ann["standard"][::-1]]),
-                                              dist(model.wv[ann["standard"]], model.wv[genOCRError(ann["standard"])])]
+                                                   dist(model.wv[ann["standard"]], model.wv[ocr_tok]), dist(model.wv[ann["standard"]], model.wv[swap_tok])]
                                   elif args.ft_pt == True:
                                        x_embeds += [ft.get_word_vector(ann["standard"]),
                                                ft.get_word_vector(ann["observed"]),
                                                ft.get_word_vector(ann["standard"][::-1]),
-                                               ft.get_word_vector(genOCRError(ann["standard"]))]
+                                               ft.get_word_vector(ocr_tok), ft.get_word_vector(swap_tok)]
 
                                        x_diffs += [dist(x_embeds[-4],x_embeds[-4]), dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(ann["observed"])),
                                               dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(ann["standard"][::-1])),
-                                              dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(genOCRError(ann["standard"])))]
+                                              dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(ocr_tok)),
+                                              dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(swap_tok))]
                                        
                                  
 
