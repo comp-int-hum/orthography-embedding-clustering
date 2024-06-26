@@ -36,6 +36,9 @@ if __name__ == "__main__":
      elif args.model == "bert-base-uncased":
           layers="last_four"
           args.datasets = ["../llm-direct-embeddings/work/GB_0_2/bert-base-uncased/embeds/chunk_embed_custom_0_*.json.gz"]
+     elif args.model == "bert_forced":
+          layers="last_four"
+          args.datasets = ["../llm-direct-embeddings/work/GB_0_2/bert_forced/embeds/chunk_embed_custom_0_*.json.gz"]
      else:
           layers="last_four"
           
