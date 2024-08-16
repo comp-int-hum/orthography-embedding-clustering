@@ -39,8 +39,9 @@ if __name__ == "__main__":
           for line in t_in:
                j_line = json.loads(line)
                c = Counter(j_line["transforms"])
-               
-               commons.append(str(len(c)) + ": " + ", ".join(t[0] +" " + str(t[1]) for t in  c.most_common(args.ntransforms)))
+               c2 = Counter(j_line["dtags"])
+               print(c2)
+               commons.append(str(len(c)) + ": " + ", ".join(t[0] +" " + str(t[1]) for t in  c.most_common(args.ntransforms)) +"\n"+", ".join(str(d[0]) + " " + str(d[1]) for d in c2.most_common(args.ntransforms)))
      
      for dfg, cs in zip(k_df.groupby("Cluster"), commons):
           c_name = dfg[0]

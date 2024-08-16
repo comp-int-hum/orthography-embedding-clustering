@@ -44,6 +44,8 @@ if __name__ == "__main__":
      x_diffs = []
      x_embeds = []
      labels = []
+     dtags = []
+     g_ids = []
      for d_stem in args.datasets:
          for dataset in glob.glob(d_stem):
               print(dataset)
@@ -52,35 +54,38 @@ if __name__ == "__main__":
                         js_line = json.loads(line)
                         for ann in js_line["annotations"]:
                              if ann["observed"]:
-                                  ocr_tok = aug.augment(ann["standard"])[0]
-                                  swap_tok = ann["standard"][:2][::-1]+ann["standard"][2:]
                                   
-                                  y += [ann["standard"], ann["observed"], ann["standard"][::-1], ocr_tok, swap_tok]
-                                  labels += ["std","obv","rev","ocr","swp"]
-                                  standards += [ann["standard"]]*5
+                                  y += [ann["standard"], ann["observed"], ann["rev_token"], ann["ocr_token"], ann["swap_token"], ann["rand_token"]]
+                                  labels += ["std","obv","rev","ocr","swp", "rnd"]
+                                  standards += [ann["standard"]]*6
+                                  dtags += ["std", ann["dtag"], "rev", "ocr", "swp", "rnd"]
+                                  g_ids += [js_line["g_id"]]*6
 
                                   if args.ft_pt == False:
                                        x_embeds += [model.wv[ann["standard"]],
                                                model.wv[ann["observed"]],
-                                               model.wv[ann["standard"][::-1]],
-                                               model.wv[ocr_tok],
-                                               model.wv[swap_tok]]
+                                               model.wv[ann["rev_token"]],
+                                               model.wv[ann["ocr_token"]],
+                                               model.wv[ann["swap_token"]],
+                                               model.wv[ann["rand_token"]]]     
 
-                                       x_diffs += [dist(x_embeds[0],x_embeds[0]), dist(model.wv[ann["standard"]], model.wv[ann["observed"]]),
-                                              dist(model.wv[ann["standard"]], model.wv[ann["standard"][::-1]]),
-                                                   dist(model.wv[ann["standard"]], model.wv[ocr_tok]), dist(model.wv[ann["standard"]], model.wv[swap_tok])]
+                                       x_diffs += [dist(x_embeds[0],x_embeds[0]), dist(x_embeds[0], x_embeds[1]),dist(x_embeds[0], x_embeds[2]), dist(x_embeds[0], x_embeds[3]),
+                                                   dist(x_embeds[0], x_embeds[4]),dist(x_embeds[0], x_embeds[5])]      
+
                                   elif args.ft_pt == True:
                                        x_embeds += [ft.get_word_vector(ann["standard"]),
                                                ft.get_word_vector(ann["observed"]),
-                                               ft.get_word_vector(ann["standard"][::-1]),
-                                               ft.get_word_vector(ocr_tok), ft.get_word_vector(swap_tok)]
+                                               ft.get_word_vector(ann["rev_token"]),
+                                               ft.get_word_vector(ann["ocr_token"]), ft.get_word_vector(ann["swap_token"]), ft.get_word_vector(ann["rand_token"])]
 
-                                       x_diffs += [dist(x_embeds[-4],x_embeds[-4]), dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(ann["observed"])),
-                                              dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(ann["standard"][::-1])),
-                                              dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(ocr_tok)),
-                                              dist(ft.get_word_vector(ann["standard"]), ft.get_word_vector(swap_tok))]
+                                       x_diffs += [dist(x_embeds[0],x_embeds[0]),
+                                               dist(x_embeds[0],x_embeds[1]),
+                                               dist(x_embeds[0],x_embeds[2]),
+                                               dist(x_embeds[0],x_embeds[3]),
+                                               dist(x_embeds[0],x_embeds[4]),
+                                               dist(x_embeds[0],x_embeds[5])]
                                        
                                  
 
      with open(args.outfile, "wb") as of:
-          pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels": labels}, of)
+          pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels": labels, "dtags": dtags, "gids": g_ids}, of)

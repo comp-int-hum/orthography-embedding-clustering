@@ -37,13 +37,15 @@ if __name__ == "__main__":
           standards = embeds["standards"]
           labels = embeds["labels"]
 
-          filtered =  [f for f in zip(x_embeds, x_diffs, y, standards, labels) if f[4] in args.label_set] 
+          filtered =  [f for f in zip(x_embeds, x_diffs, y, standards, labels, dtags, gids) if f[4] in args.label_set] 
           x_embeds = [f[0] for f in filtered]
 
           x_diffs = [f[1] for f in filtered]
           y = [f[2] for f in filtered]
           standards = [f[3] for f in filtered]
           labels = [f[4] for f in filtered]
+          dtags = [f[5] for f in filtered]
+          gids = [f[6] for f in filtered]
           
           
           group_labels = []
@@ -64,7 +66,7 @@ if __name__ == "__main__":
      avg_accs = []
      avg_std_obv_accs = []
      
-     for k in range(args.k[0], args.k[1]):
+     for k in range(args.k[0], args.k[1]+1):
           print("K: "+str(k))
           kmeans = KMeans(n_clusters=k, random_state=0, n_init="auto").fit(np.array(analyze))
           inertias.append(kmeans.inertia_)
@@ -72,7 +74,7 @@ if __name__ == "__main__":
           ks.append(k)
 
           
-          k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels, group_labels), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label", "Group"])
+          k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels, group_labels, dtags, gids), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label", "Group", "Dtag", "GID"])
 
           full_PCA = PCA(n_components=2)
           fit = full_PCA.fit_transform(k_df[args.cluster_element].tolist())
@@ -89,7 +91,6 @@ if __name__ == "__main__":
           for c_name, c_group in k_df.groupby("Cluster"):
                c_group = c_group.reset_index(drop=True)
                cluster = {l: {"tokens":[]} for l in args.label_set}
-               #print(c_group)
                #cluster purity method: how well does each K gather known nontargets (std, rev, ocr labels) into single clusters
                #avg. purity: less mixed clusters are on avg. the better
 
@@ -119,17 +120,22 @@ if __name__ == "__main__":
           ax = sns.scatterplot(x="x", y="y", hue="Cluster", data=k_df.assign(Cluster=k_df["Cluster"].map(lambda x: legend_labels[x])), legend="full")
           #sns.move_legend(ax, "upper center", bbox_to_anchor=(0.5, 1.35), ncol=3, title=None, frameon=False)
           
-          avg_accs.append(cluster_accs/(k_df["Group"].count()/len(args.label_set)))
-          avg_std_obv_accs.append(std_ob_accs/(k_df["Group"].count()/len(args.label_set)))
+          avg_accs.append(cluster_accs/(len(k_df)/len(args.label_set)))
+          avg_std_obv_accs.append(std_ob_accs/(len(k_df)/len(args.label_set)))
           #avg_cps.append(sum(cluster_pures))#/len(cluster_pures))
           avg_cps.append(sum(cluster_pures)/len(k_df))
           plt.savefig(args.cluster_out+"kpca"+str(k)+args.cluster_element+".png", format="png")
-          k_df.to_csv(args.cluster_out+"kpca"+str(k)+".csv", columns=["Token","Cluster","Label","Group"], index=False)
+          k_df.to_csv(args.cluster_out+"kpca"+str(k)+".csv", columns=["Token","Cluster","Label","Group", "Standard", "x", "y", "Dtag", "GID"], index=False)
           with open(args.cluster_out+"details"+str(k)+".jsonl", "wt") as jout:
                for c in clusters:
                     jout.write(json.dumps(c)+"\n")
           plt.clf()
-     
+
+     with open(args.cluster_out+"summaries.json", "wt") as po:
+          po.write(json.dumps({"purities": avg_cps, "avg_accs": avg_accs, "avg_std_obv_accs": avg_std_obv_accs}))
+          
+          
+          
      plt.plot(ks, inertias, "bx-")
      plt.xticks(np.arange(min(ks), max(ks)+1, 1))
      plt.xlabel("K")
@@ -152,7 +158,7 @@ if __name__ == "__main__":
      plt.savefig(args.distincts_out, format="png")
 
      plt.clf()
-     plt.plot(ks, avg_accs, "bx-")
+     plt.plot(ks, avg_std_obv_accs, "bx-")
      plt.xticks(np.arange(min(ks), max(ks)+1, 1))
      plt.xlabel("K")
      plt.ylabel("Avg. S/O Acc")

@@ -30,14 +30,18 @@ if __name__ == "__main__":
           y = embeds["y"]
           standards = embeds["standards"]
           labels = embeds["labels"]
+          dtags = embeds["dtags"]
+          gids = embeds["gids"]
 
-          filtered =  [f for f in zip(x_embeds, x_diffs, y, standards, labels) if f[4] in args.label_set] 
+          filtered =  [f for f in zip(x_embeds, x_diffs, y, standards, labels, dtags, gids) if f[4] in args.label_set] 
           x_embeds = [f[0] for f in filtered]
 
           x_diffs = [f[1] for f in filtered]
           y = [f[2] for f in filtered]
           standards = [f[3] for f in filtered]
           labels = [f[4] for f in filtered]
+          dtags = [f[5] for f in filtered]
+          gids = [f[6] for f in filtered]
           
           
           group_labels = []
@@ -56,13 +60,13 @@ if __name__ == "__main__":
      kmeans = KMeans(n_clusters=args.k, random_state=0, n_init="auto").fit(np.array(analyze))
 
           
-     k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels, group_labels), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label", "Group"])
+     k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels, group_labels, dtags, gids), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label", "Group", "Dtag", "GID"])
      full_PCA = PCA(n_components=2)
      fit = full_PCA.fit_transform(k_df[args.cluster_element].tolist())
      k_df["x"] = [f[0] for f in fit]
      k_df["y"] = [f[1] for f in fit]
      
-          
-     k_df.to_csv(args.outfile, columns=["Token","Cluster","Label","Group", "Standard", "x", "y"], index=False)
+     k_df["Dtag"] = k_df["Dtag"].fillna("unk")    
+     k_df.to_csv(args.outfile, columns=["Token","Cluster","Label","Group", "Dtag", "GID", "Standard", "x", "y"], index=False)
 
 

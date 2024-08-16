@@ -33,7 +33,7 @@ if __name__ == "__main__":
      cluster_distinct_transforms = []
      with open(args.infile, "rt") as j_in, open(args.outfile, "wt") as j_out, open(args.outfile[:-5]+"toks.txt", "wt") as t_out:
           for i,line in enumerate(j_in):
-               t_out.write("[cluster "+str(i)+"]\n")
+               t_out.write("[cluster "+str(i+1)+"]\n")
                cluster = json.loads(line)
                c_out = {"lds": [], "transforms": defaultdict(int)}
                for lbl,item in cluster.items():
@@ -41,14 +41,14 @@ if __name__ == "__main__":
                          for token in item["tokens"]:
                               t_out.write(token["token"] + " -> " + token["standard"] + "\n")
                               c_out["lds"].append(jellyfish.levenshtein_distance(token["token"], token["standard"]))
-                              for d in difflib.ndiff(token["token"], token["standard"]):
+                              for d in difflib.ndiff(token["standard"], token["token"]):
                                    if d[0] in ["+","-"]:
                                         c_out["transforms"][d]+=1
                c_out["lds"] = sum(c_out["lds"])/len(c_out["lds"])
                cluster_lds.append(c_out["lds"])
                cluster_transforms.append(c_out["transforms"])
                cluster_distinct_transforms.append(len(c_out["transforms"]))
-               j_out.write(json.dumps(c_out, indent=4) + "\n")
+               j_out.write(json.dumps(c_out) + "\n")
      
 
      ld_df = pd.DataFrame(cluster_lds)
@@ -68,7 +68,7 @@ if __name__ == "__main__":
      ax.set_ylim(0,1.0)
      #for c,l in zip(ax.containers, cluster_distinct_transforms):
      #     ax.bar_label(c, labels=[l], label_type="edge")
-     ax.set_xticklabels([str(c) + ": " + str(dt) for c, dt in enumerate(cluster_distinct_transforms)])
+     ax.set_xticklabels([str(c+1) + ": " + str(dt) for c, dt in enumerate(cluster_distinct_transforms)])
      sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
      plt.xlabel("Cluster: N distinct transformations")
      plt.ylabel("Transformation percentages")

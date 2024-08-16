@@ -31,13 +31,17 @@ if __name__ == "__main__":
      with open(args.edits_out, "wt") as e_out, open(args.tokens_out, "wt") as t_out:
           for gn, g in k_df.groupby("Cluster"):
                t_out.write("[cluster "+str(gn+1)+"]\n")
-               c_out = {"lds": [], "transforms": defaultdict(int)}
-               for token, standard in zip(g["Token"].to_list(), g["Standard"].to_list()):
-                    t_out.write(token + " -> " + standard + "\n")
+               c_out = {"lds": [], "dtags": [], "transform_detail": [], "transforms": defaultdict(int)}
+               for token, standard, dtag in zip(g["Token"].to_list(), g["Standard"].to_list(), g["Dtag"].to_list()):
+                    dlist = []
+                    t_out.write(token + " -> " + standard + " : " + str(dtag)+"\n")
                     c_out["lds"].append(jellyfish.levenshtein_distance(token, standard))
+                    c_out["dtags"].append(dtag)
                     for d in difflib.ndiff(standard, token):
                          if d[0] in ["+","-"]:
                               c_out["transforms"][d]+=1
+                              dlist.append(d)
+                    c_out["transform_detail"].append(dlist)
                c_out["lds"] = sum(c_out["lds"])/len(c_out["lds"])
                e_out.write(json.dumps(c_out) + "\n")
      
