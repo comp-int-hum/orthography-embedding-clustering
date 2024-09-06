@@ -39,8 +39,6 @@ def paragraph_chunk(full_text):
         for c in full_text.split("\n\n"):
                 yield c
 
-
-
 nlp = spacy.load("en_core_web_trf", exclude=["ner"])
 
 #remove special rules concerning apos

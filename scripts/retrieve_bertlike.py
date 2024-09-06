@@ -50,6 +50,7 @@ if __name__ == "__main__":
      labels = []
      dtags = []
      gids = []
+     sids = []
      for d_stem in args.datasets:
          for dataset in glob.glob(d_stem):
               print(dataset)
@@ -76,10 +77,11 @@ if __name__ == "__main__":
                                   x_diffs += [dist(x_embeds[-6],x_embeds[-6]),dist(x_embeds[-6],x_embeds[-5]),dist(x_embeds[-6], x_embeds[-4]),dist(x_embeds[-6],x_embeds[-3]), dist(x_embeds[-6],x_embeds[-2]), dist(x_embeds[-6],x_embeds[-1])]
                                   dtags += ["std", ann["dtag"], "rev", "ocr", "swp", "rnd"]
                                   gids += [js_line["g_id"]]*6
+                                  sids += [js_line["s_id"]]*6
                                  
 
      with open(args.outfile, "wb") as of:
-          pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels":labels, "dtags": dtags, "gids": gids}, of)
+          pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels":labels, "dtags": dtags, "gids": gids, "sids": sids}, of)
      print(n_anns)
      print(obv)
      

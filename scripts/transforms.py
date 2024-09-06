@@ -30,6 +30,7 @@ if __name__ == "__main__":
      k_df = pd.read_csv(args.k_csv)
      with open(args.edits_out, "wt") as e_out, open(args.tokens_out, "wt") as t_out:
           for gn, g in k_df.groupby("Cluster"):
+               g = g.sort_values(by=["Token"])
                t_out.write("[cluster "+str(gn+1)+"]\n")
                c_out = {"lds": [], "dtags": [], "transform_detail": [], "transforms": defaultdict(int)}
                for token, standard, dtag in zip(g["Token"].to_list(), g["Standard"].to_list(), g["Dtag"].to_list()):

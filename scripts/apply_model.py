@@ -46,6 +46,7 @@ if __name__ == "__main__":
      labels = []
      dtags = []
      g_ids = []
+     sids = []
      for d_stem in args.datasets:
          for dataset in glob.glob(d_stem):
               print(dataset)
@@ -60,6 +61,7 @@ if __name__ == "__main__":
                                   standards += [ann["standard"]]*6
                                   dtags += ["std", ann["dtag"], "rev", "ocr", "swp", "rnd"]
                                   g_ids += [js_line["g_id"]]*6
+                                  sids += [js_line["s_id"]]*6
 
                                   if args.ft_pt == False:
                                        x_embeds += [model.wv[ann["standard"]],
@@ -88,4 +90,4 @@ if __name__ == "__main__":
                                  
 
      with open(args.outfile, "wb") as of:
-          pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels": labels, "dtags": dtags, "gids": g_ids}, of)
+          pickle.dump({"y":y, "standards": standards, "x_embeds": x_embeds, "x_diffs": x_diffs, "labels": labels, "dtags": dtags, "gids": g_ids, "sids": sids}, of)

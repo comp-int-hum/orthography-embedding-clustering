@@ -23,7 +23,10 @@ if __name__ == "__main__":
      parser.add_argument("--dtag_purity", help = "Dtag purity out")
      parser.add_argument("--d_conc")
      parser.add_argument("--so_acc", help="Standard obvs acc out")
+     parser.add_argument("--so_e", help="so error out")
+     parser.add_argument("--acc_e", help="acc error out")
      parser.add_argument("--label_set", nargs="+", default=["obv","std","rev","ocr"])
+     parser.add_argument("--error_stem")
 
      args, rest = parser.parse_known_args()
 
@@ -33,30 +36,106 @@ if __name__ == "__main__":
      ks = []
      dtag_purity = []
      dtag_concentration = []
+
+     dtag_proportion = {}
+
+
+     error_groups = []
+     error_tokens = []
+     error_clusters = []
+
+     so_groups = []
+     so_tokens = []
+     so_clusters = []
      
      for k, c_csv in enumerate(args.cluster_csvs):
           ks.append(k+1)
           cluster_acc = 0
           cluster_std_obs_acc = 0
+          so_e_g = []
+          so_e_t = []
+          so_e_d = []
+          so_e_s = []
+          
+          e_g = []
+          e_t = []
+          e_d = []
+          e_s = []
+
+          so_c_g = []
+          so_c_t = []
+          so_c_d = []
+          so_c_s = []
+          
           k_df = pd.read_csv(c_csv)
           k_df = k_df.loc[k_df["Label"].isin(args.label_set)]
           purities.append(k_df.groupby("Cluster")["Label"].value_counts().groupby("Cluster").max().sum()/len(k_df))
           dtag_purity.append(k_df.groupby("Cluster")["Dtag"].value_counts().groupby("Cluster").max().sum()/len(k_df))
           d_c = [c for c in k_df.groupby("Dtag")["Cluster"].max()]
           dtag_concentration.append(sum(d_c)/len(d_c))
-          for gn, g in k_df.groupby(["Cluster", "Group"]):
-               if g["Label"].str.contains("std").sum() > 0 and g["Label"].str.contains("obv").sum() > 0:
-                    cluster_std_obs_acc += 1
-               if g["Label"].count() == len(args.label_set):
-                    cluster_acc += 1
+          for gn, g in k_df.groupby(["Group"]):
+               if "obv" in g["Label"].to_list() and "std" in g["Label"].to_list():
+                    if g.loc[g["Label"] == "obv"]["Cluster"].item() == g.loc[g["Label"] == "std"]["Cluster"].item():
+                         cluster_std_obs_acc += 1
+                         so_c_g.append(gn[0])
+                         so_c_t.append(g.loc[g["Label"] == "obv"]["Token"].item())
+                         so_c_d.append(g.loc[g["Label"] == "obv"]["Dtag"].item())
+                         so_c_s.append(g.loc[g["Label"] == "obv"]["Standard"].item())
+                    else:
+                         so_e_g.append(gn[0])
+                         so_e_t.append(g.loc[g["Label"] == "obv"]["Token"].item())
+                         so_e_d.append(g.loc[g["Label"] == "obv"]["Dtag"].item())
+                         so_e_s.append(g.loc[g["Label"] == "obv"]["Standard"].item())
+               if g["Cluster"].eq(g["Cluster"].to_list()[0]).all():
+                    cluster_acc +=1
+               else:
+                    e_g.append(gn[0])
+                    e_t.append(g.loc[g["Label"] == "obv"]["Token"].item())
+                    e_d.append(g.loc[g["Label"] == "obv"]["Dtag"].item())
+                    e_s.append(g.loc[g["Label"] == "obv"]["Standard"].item())
+                    
+          e_df = pd.DataFrame({"Group": e_g, "Token": e_t, "Standard": e_s, "Dtag": e_d})
+          e_df.to_csv(args.error_stem+str(k+1)+"error_acc.csv", index=False)
+          s_df = pd.DataFrame({"Group": so_e_g, "Token": so_e_t, "Standard":so_e_s, "Dtag":so_e_d})
+          s_df.to_csv(args.error_stem+str(k+1)+"error_so.csv")
+          c_df = pd.DataFrame({"Group": so_c_g, "Token": so_c_t, "Standard":so_c_s, "Dtag":so_c_d})
+          c_df.to_csv(args.error_stem+str(k+1)+"correct_so.csv")
+          error_groups += e_g
+          error_tokens += e_t
+          so_groups += so_e_g
+          so_tokens += so_e_t
+          
           avg_accs.append(cluster_acc/(len(k_df)/len(args.label_set)))
           avg_std_obv_accs.append(cluster_std_obs_acc/(len(k_df)/len(args.label_set)))
+          """
+          for gn, g in k_df.groupby(["Cluster", "Group"]):
+               
+               if g["Label"].str.contains("std").sum() > 0 and g["Label"].str.contains("obv").sum() > 0:
+                    cluster_std_obs_acc += 1
+               else:
+                    so_groups += [g for g in g["Group"]]
+                    so_tokens += [t for t in g["Token"]]
+                    so_clusters += [c for c in g["Cluster"]]
+               if g["Label"].count() == len(args.label_set):
+                    cluster_acc += 1
+               else:
+                    error_groups+=[g for g in g["Group"]]
+                    error_tokens+=[t for t in g["Token"]]
+                    error_clusters+=[c for c in g["Cluster"]]
+          avg_accs.append(cluster_acc/((len(k_df)/len(args.label_set))))
+          avg_std_obv_accs.append(cluster_std_obs_acc/((len(k_df)/len(args.label_set))))
 
+          """
      
      d = np.array([ks, purities, dtag_purity, avg_accs, avg_std_obv_accs, dtag_concentration]).T.tolist()
      o_df = pd.DataFrame(data=d, columns = ["K", "Purity", "Dtag_purity",  "Avg_Acc", "Avg_SO_Acc", "D_conc"])
      o_df.to_csv(args.summary_out)
-          
+
+     e_df = pd.DataFrame({"Group": error_groups, "Token": error_tokens})
+     e_df.to_csv(args.acc_e, index=False)
+
+     so_df = pd.DataFrame({"Group": so_groups, "Token": so_tokens})
+     so_df.to_csv(args.so_e, index=False)
      
      plt.plot(ks, purities, "bx-")
      plt.xticks(np.arange(min(ks), max(ks), 1))

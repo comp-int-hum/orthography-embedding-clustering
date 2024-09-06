@@ -35,6 +35,7 @@ vars.AddVariables(
     ("METADATA","", ["../gutenberg-ns-extractor/pg_19cam.csv"]),
     ("GUT_DIR", "", ["../../../export/corpora/gutenberg/"]),
     ("SENT_DATASET_STEMS", "", ["../llm-direct-embeddings/work/GB_0_3/bert-large-uncased/embeds/chunk_embed_custom_0_*.json.gz"]),
+    ("SENT_DATASET_FULL", "", "data/GB_0_4.jsonl"),
     ("FOLDS", "", 1),
     ("CLUSTER_ELEMENTS","",["Diffs","Embeds"]),
     ("N_TRANSFORMS","",3),
@@ -54,7 +55,7 @@ env = Environment(
             action="python scripts/create_data.py ${METADATA} ${TARGETS[0]} ${DIR}"
         ),
         "TrainModel" : Builder(
-            action="python scripts/train_model.py --dataset ${SOURCES[0]} --outputs ${TARGETS[0]} --embed_width ${EMBED_WIDTH}"
+            action="python scripts/train_model.py --dataset ${SOURCES[0]} --outputs ${TARGETS[0]} --embed_width ${EMBED_WIDTH} --type ${TYPE}"
         ),
         "ShuffleData" : Builder(
             action="python scripts/shuffle_data.py --dataset ${SOURCES[0]} --outputs ${TARGETS}"
@@ -65,16 +66,15 @@ env = Environment(
         "RetrieveBertlike" : Builder(
             action="python scripts/retrieve_bertlike.py --model ${MODEL_TYPE} --datasets ${SOURCE_DATASET} --outfile ${TARGETS[0]}"
         ),
-        "GenerateK": Builder(
-            action="python scripts/generate_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --purity ${TARGETS[1]} --distincts_out ${TARGETS[2]} --so_acc ${TARGETS[3]} --k ${K} --cluster_element ${CLUSTER_ELEMENT} --label_set ${LS} --cluster_out ${CLUSTER_OUT}"
-        ),
+        "SimTables": Builder(action="python scripts/distance_grids.py --wv_model ${SOURCES[0]} --full_sc ${SENT_DATASET_FULL} --wv_out ${TARGETS[0]} --wn_out ${TARGETS[1]}"),
 	"Cluster": Builder(action="python scripts/cluster_k.py --embeds ${SOURCES[0]} --outfile ${TARGETS[0]} --k ${K} --cluster_element ${CLUSTER_ELEMENT} --label_set ${LS}"),
-        "SummaryCharts": Builder(action="python scripts/summary_charts.py --cluster_csvs ${SOURCES} --purity ${TARGETS[0]} --accs_out ${TARGETS[1]} --so_acc ${TARGETS[2]} --summary_out ${TARGETS[3]} --dtag_purity ${TARGETS[4]} --d_conc ${TARGETS[5]} --label_set ${LS}"),
+        "SummaryCharts": Builder(action="python scripts/summary_charts.py --cluster_csvs ${SOURCES} --purity ${TARGETS[0]} --accs_out ${TARGETS[1]} --so_acc ${TARGETS[2]} --summary_out ${TARGETS[3]} --dtag_purity ${TARGETS[4]} --d_conc ${TARGETS[5]} --so_e ${TARGETS[6]} --acc_e ${TARGETS[7]} --label_set ${LS} --error_stem ${ES}"),
         "Transforms": Builder(action="python scripts/transforms.py --k_csv ${SOURCES[0]} --edits_out ${TARGETS[0]} --tokens_out ${T_O}"),
-        "PathDistance": Builder(action="python scripts/path_distance.py --k_csv ${SOURCES[0]} --sim_out ${TARGETS[0]}"),
-        "FTPathDistance": Builder(action="python scripts/ft_path_distance.py --k_csv ${SOURCES[0]} --sim_out ${TARGETS[0]}"),
+        "PathDistance": Builder(action="python scripts/path_distance.py --k_csv ${SOURCES[0]} --sim_out ${TARGETS[0]} --comp_table ${SOURCES[1]}"),
+        "WNSim": Builder(action="python scripts/wn_sim.py --k_csv ${SOURCES[0]} --comp_table ${SOURCES[1]} --sim_out ${TARGETS[0]}"),
         "TransformChart": Builder(action="python scripts/transform_chart.py --edits_in ${SOURCES[0]} --n_edits ${N_TRANSFORMS} --outfile ${TARGETS[0]}"),
         "DirChart": Builder(action="python scripts/combined_reduce_diffs.py --pca_csv ${SOURCES[0]} --transforms ${SOURCES[1]} --outfile ${TARGETS[0]} --k ${K}"),
+        "DtagProportions": Builder(action="python scripts/dtag_proportion.py --cluster_csv ${SOURCES[0]} --proportion_out ${TARGETS[0]}"),
         "AnalyzeDetails": Builder(
             action="python scripts/analyze_detail.py --dummy_infile ${SOURCES[0]} --purity ${TARGETS[0]} --acc ${TARGETS[1]} --std_obs ${TARGETS[2]} --infile ${JSONL_LOC}"),
         "LDTransforms" : Builder(
@@ -89,8 +89,12 @@ env = Environment(
 embeds = []
 embed_names = []
 results = {}
-#for dataset_name in env["SENT_DATASET_STEMS"]:
+
+
 for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], env["DATASET_NAMES"]):
+    train_data = env.CreateData(["work/${DNAME}.gz.txt"], [], METADATA=metadata, DIR=corpus_dir, DNAME=dataset_name)
+    wn_model = env.TrainModel(["work/${DNAME}_wn.vec"], [train_data], EMBED_WIDTH=300, TYPE="wn", DNAME=dataset_name)
+    ft_model = env.TrainModel(["work/${DNAME}_ft.model"], [train_data], EMBED_WIDTH=300, TYPE="ft", DNAME=dataset_name)
     for fold in range(1, env["FOLDS"] + 1):
         for model_type in env["MODEL_TYPES"]:
             if model_type == "fasttext_pretrained":
@@ -116,6 +120,10 @@ for metadata, corpus_dir, dataset_name in zip(env["METADATA"], env["GUT_DIR"], e
                     )
 
 
+    wv_sim, wn_dist = env.SimTables(["work/${DNAME}_wvsim.json", "work/${DNAME}_wndist.json"], [wn_model], DNAME=dataset_name)
+    
+pds_res = defaultdict(dict)
+wns_res = defaultdict(dict)
 res = defaultdict(dict)
 
 for ename, embed in zip(embed_names, embeds):
@@ -141,19 +149,19 @@ for ename, embed in zip(embed_names, embeds):
                 ))
 
                 if k >=10:
-                   #pd = env.PathDistance(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/path_distance/${K}.csv"], [cluster_csvs[-1]],
-                      #ENAME=ename,
-                      #CLUSTER_ELEMENT = c_element,
-                      #LSN = "".join(ls),
-                      #K=k
-                  #)
-
-                   pd_ft = env.FTPathDistance(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/path_distance/${K}_ft.csv"], [cluster_csvs[-1]],
+                   pd = env.PathDistance(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/path_distance/${K}.csv"], [cluster_csvs[-1], wn_dist],
                       ENAME=ename,
                       CLUSTER_ELEMENT = c_element,
                       LSN = "".join(ls),
                       K=k
                   )
+                   if "".join(ls) in ["obv","stdobv"]:
+                      wn = env.WNSim(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/path_distance/${K}_w.csv"], [cluster_csvs[-1], wv_sim],
+                          ENAME=ename,
+                          CLUSTER_ELEMENT = c_element,
+                          LSN = "".join(ls),
+                          K=k
+                      )
 
                 tc = env.TransformChart(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/edits/${K}.png"], [ld_transforms[-1]],
                     ENAME = ename,
@@ -168,14 +176,16 @@ for ename, embed in zip(embed_names, embeds):
                     LSN = "".join(ls),
                     K = k
                 )
+                dtp = env.DtagProportions(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/prop_${K}.csv"], [cluster_csvs[-1]], ENAME=ename, CLUSTER_ELEMENT=c_element, LSN = "".join(ls), K=k) 
 
             t_dtag_chart = env.SummaryTransforms(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/dtag_transforms.png"], ld_transforms, ENAME=ename, CLUSTER_ELEMENT=c_element, LSN="".join(ls))
-            purity, acc, std_ob_acc, summ, dtag, conc = env.SummaryCharts(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/acc.png",
-                "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/std_obs.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/summary.csv", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/dtag_purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/dtag_conc.png"],
+            purity, acc, std_ob_acc, summ, dtag, conc, so_error, acc_error = env.SummaryCharts(["work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/acc.png",
+                "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/std_obs.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/summary.csv", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/dtag_purity.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/dtag_conc.png", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/so_error.csv", "work/results/${ENAME}/${LSN}/${CLUSTER_ELEMENT}/acc_error.csv"],
                 [cluster_csvs],
                 ENAME = ename,
                 CLUSTER_ELEMENT = c_element,
                 LS = ls,
+                ES = "work/results/"+ename+"/"+"".join(ls)+"/"+c_element+"/",
                 LSN = "".join(ls))
             res["".join(ls)+"_"+c_element][ename] = summ
 
