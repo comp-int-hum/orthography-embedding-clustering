@@ -4,6 +4,7 @@ import gzip
 import json
 import numpy as np
 import pickle
+import fuzzy
 
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -22,6 +23,8 @@ if __name__ == "__main__":
      parser.add_argument("--random_state", type=int, default=0)
      
      args, rest = parser.parse_known_args()
+
+     dmeta = fuzzy.DMetaphone()
 
      with open(args.embeds, "rb") as e_in:
           embeds = pickle.load(e_in)
@@ -44,6 +47,9 @@ if __name__ == "__main__":
           dtags = [f[5] for f in filtered]
           gids = [f[6] for f in filtered]
           sids = [f[7] for f in filtered]
+          dms = [dmeta(ys) for ys in y]
+          dm1 = [d[0] for d in dms]
+          dm2 = [d[1] for d in dms]
           
           
           group_labels = []
@@ -62,13 +68,13 @@ if __name__ == "__main__":
      kmeans = KMeans(n_clusters=args.k, random_state=0, n_init="auto").fit(np.array(analyze))
 
           
-     k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels, group_labels, dtags, gids, sids), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label", "Group", "Dtag", "GID", "SID"])
+     k_df = pd.DataFrame(zip(y, standards, kmeans.labels_, x_diffs, x_embeds, labels, group_labels, dtags, gids, sids, dm1, dm2), columns = ["Token", "Standard", "Cluster", "Diffs", "Embeds","Label", "Group", "Dtag", "GID", "SID", "DM1", "DM2"])
      full_PCA = PCA(n_components=2)
      fit = full_PCA.fit_transform(k_df[args.cluster_element].tolist())
      k_df["x"] = [f[0] for f in fit]
      k_df["y"] = [f[1] for f in fit]
      
      k_df["Dtag"] = k_df["Dtag"].fillna("unk")    
-     k_df.to_csv(args.outfile, columns=["Token","Cluster","Label","Group", "Dtag", "GID", "SID", "Standard", "x", "y"], index=False)
+     k_df.to_csv(args.outfile, columns=["Token","Cluster","Label","Group", "Dtag", "GID", "SID", "Standard", "DM1", "DM2", "x", "y"], index=False)
 
 

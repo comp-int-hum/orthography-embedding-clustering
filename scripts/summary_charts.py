@@ -107,25 +107,6 @@ if __name__ == "__main__":
           
           avg_accs.append(cluster_acc/(len(k_df)/len(args.label_set)))
           avg_std_obv_accs.append(cluster_std_obs_acc/(len(k_df)/len(args.label_set)))
-          """
-          for gn, g in k_df.groupby(["Cluster", "Group"]):
-               
-               if g["Label"].str.contains("std").sum() > 0 and g["Label"].str.contains("obv").sum() > 0:
-                    cluster_std_obs_acc += 1
-               else:
-                    so_groups += [g for g in g["Group"]]
-                    so_tokens += [t for t in g["Token"]]
-                    so_clusters += [c for c in g["Cluster"]]
-               if g["Label"].count() == len(args.label_set):
-                    cluster_acc += 1
-               else:
-                    error_groups+=[g for g in g["Group"]]
-                    error_tokens+=[t for t in g["Token"]]
-                    error_clusters+=[c for c in g["Cluster"]]
-          avg_accs.append(cluster_acc/((len(k_df)/len(args.label_set))))
-          avg_std_obv_accs.append(cluster_std_obs_acc/((len(k_df)/len(args.label_set))))
-
-          """
      
      d = np.array([ks, purities, dtag_purity, avg_accs, avg_std_obv_accs, dtag_concentration]).T.tolist()
      o_df = pd.DataFrame(data=d, columns = ["K", "Purity", "Dtag_purity",  "Avg_Acc", "Avg_SO_Acc", "D_conc"])
